@@ -1,26 +1,29 @@
 <template>
-  <img alt="Vue logo" src="./assets/logo.png">
-  <HelloWorld msg="Welcome to Your Vue.js App"/>
+  <div>
+    <h1>文用 Vue3 做一个支持断点续传，支持暂停，的大文件上传组件演示</h1>
+    <h2>首先做一下原来的解释</h2>
+    <ol>
+      <li>主要是用了 Blod.prototype.slice 对文件进行切片</li>
+      <li>上传按钮: 修改文件后点击上传 `handleUpload`</li>
+      <li>`createChunkFileList` 创建切片列表</li>
+      <li>利用 `formData.append()` 构建上传 data</li>
+    </ol>
+    <div>
+      <upload></upload>
+    </div>
+  </div>
 </template>
 
 <script>
-import HelloWorld from './components/HelloWorld.vue'
+import Upload from './components/upload'
 
 export default {
   name: 'App',
   components: {
-    HelloWorld
+    Upload
   }
 }
 </script>
 
 <style>
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
-}
 </style>
