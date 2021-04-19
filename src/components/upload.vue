@@ -9,7 +9,6 @@
 <script>
 const CHUNK_SIZE = 1 * 1024 * 1024;
 const SERVER_URL = "localhost:3000/upload";
-console.log(SERVER_URL);
 
 export default {
   data() {
