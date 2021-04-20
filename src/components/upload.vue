@@ -3,12 +3,14 @@
   <div>
     <input type="file" @change="handleFileChange" />点我上传
     <el-button @click="handleUpload">点击上传</el-button>
+    <el-button @click="handleMerge">点击合并</el-button>
   </div>
 </template>
 
 <script>
 const CHUNK_SIZE = 1 * 1024 * 1024;
-const SERVER_URL = "http://localhost:3000/upload";
+const SERVER_UPLOAD_URL = "http://localhost:3000/upload";
+const SERVER_MERGE_URL = "http://localhost:3000/merge";
 
 export default {
   data() {
@@ -97,13 +99,33 @@ export default {
         })
         .map(async ({ formData }) => {
           this.request({
-            url: SERVER_URL,
+            url: SERVER_UPLOAD_URL,
             data: formData
           })
         })
 
       // 并发切片
       await Promise.all(requestList)
+    },
+
+    handleMerge() {
+      if (!this.container.file) {
+        this.$message.error('请先选择文件')
+        return
+      }
+      console.log(this.container.file)
+      let {name} = this.container.file
+
+      this.request({
+        url: SERVER_MERGE_URL,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        data: JSON.stringify({
+          filename: name,
+          size: CHUNK_SIZE
+        })
+      })
     }
   },
 };
