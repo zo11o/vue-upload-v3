@@ -8,7 +8,7 @@
 
 <script>
 const CHUNK_SIZE = 1 * 1024 * 1024;
-const SERVER_URL = "localhost:3000/upload";
+const SERVER_URL = "http://localhost:3000/upload";
 
 export default {
   data() {
@@ -20,13 +20,14 @@ export default {
     };
   },
   methods: {
-    request({ url, method = "GET", data, headers = {} }) {
+    request({ url, method = "post", data, headers = {} }) {
       return new Promise((res, rej) => {
         let xhr = new XMLHttpRequest();
         xhr.open(method, url, true)
         Object.keys(headers).forEach((key) => {
           xhr.setRequestHeader(key, headers[key]);
         });
+        console.log(xhr);
         xhr.onload = (e) => {
           console.log(e);
           res({
