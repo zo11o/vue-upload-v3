@@ -6,6 +6,7 @@ const cookieParser = require('cookie-parser')
 const multiparty = require('multiparty')
 const fse = require('fs-extra')
 const path = require('path')
+const { json } = require('express')
 
 const UPLOAD_DIR = path.resolve(__dirname, ".", "uploadDir"); // 大文件存储目录
 // const UPLOAD_UPLOAD_DIR = path.resolve(__dirname, ".", "uploadDir", "upload"); // 大文件存储目录
@@ -23,6 +24,13 @@ app.all('*', (req, res, next) => {
   res.header('Access-Control-Allow-Headers', 'Content-Type')
   res.header('Content-Type', 'application/json;charset=utf-8');
   res.header('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') {
+    res.json({
+      data: '',
+      message: 'ok',
+      code: 0
+    })
+  }
   next()
 })
 
@@ -60,7 +68,11 @@ app.post('/upload', (req, res, next) => {
       await fse.mkdirs(chunkDir)
     }
     await fse.move(chunk.path, `${chunkDir}/${hash}`);
-    res.send("received file chunk")
+    res.json({
+      data: '',
+      message: "received file chunk",
+      code: 0
+    })
   })
 })
 
