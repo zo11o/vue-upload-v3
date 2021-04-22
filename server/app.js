@@ -6,7 +6,6 @@ const cookieParser = require('cookie-parser')
 const multiparty = require('multiparty')
 const fse = require('fs-extra')
 const path = require('path')
-const { json } = require('express')
 
 const UPLOAD_DIR = path.resolve(__dirname, ".", "uploadDir"); // 大文件存储目录
 // const UPLOAD_UPLOAD_DIR = path.resolve(__dirname, ".", "uploadDir", "upload"); // 大文件存储目录
@@ -30,6 +29,7 @@ app.all('*', (req, res, next) => {
       message: 'ok',
       code: 0
     })
+    return
   }
   next()
 })

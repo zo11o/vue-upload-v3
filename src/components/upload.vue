@@ -23,25 +23,30 @@ export default {
   },
   methods: {
     request({ url, method = "post", data, headers = {} }) {
-      return new Promise((res, rej) => {
+      return new Promise((resolve, rej) => {
         let xhr = new XMLHttpRequest();
         xhr.open(method, url, true)
         Object.keys(headers).forEach((key) => {
           xhr.setRequestHeader(key, headers[key]);
         });
-        console.log(xhr);
+        xhr.send(data);
+        // xhr.onreadystatechange=()=>{
+        //   if(xhr.readyState === 4) {
+        //     if(xhr.status == 200) {
+        //       let resp = 'response' in xhr ? xhr.response : xhr.responseText
+        //       resolve(JSON.parse(resp))
+        //     }
+        //   }
+        // }
         xhr.onload = (e) => {
-          console.log(e);
-          res({
-            data: e.target.response,
+          resolve({
+            data: JSON.parse(e.target.response),
           });
         };
         xhr.onerror = (e) => {
-          console.log(e);
           rej(e);
-        };
-        xhr.send(data);
-      });
+        }
+      })
     },
     handleFileChange(e) {
       // 获取上传文件列表对象
@@ -97,18 +102,23 @@ export default {
           console.log(formData)
           return { formData }
         })
-        .map(async ({ formData }) => {
+        .map(async ({ formData }) =>
           this.request({
             url: SERVER_UPLOAD_URL,
             data: formData
           })
-        })
+        )
 
       // 并发切片
+      // let p = await Promise.all(requestList)
       let p = await Promise.all(requestList)
       console.log(p)
-      let res = await this.postMerge()
-      console.log(res)
+      let r = await this.postMerge()
+      console.log(r)
+
+      // if (p.code === 0) {
+
+      // }
     },
 
     async postMerge() {
