@@ -13,6 +13,8 @@ const CHUNK_DIR_PREFIX = 'dir__'
 
 app.use(logger())
 app.use(cookieParser())
+// 提取后缀名
+const extractExt = filename => filename.slice(filename.lastIndexOf("."), filename.length)
 
 /**
  * 处理跨域
@@ -60,8 +62,9 @@ app.post('/upload', (req, res, next) => {
     }
     const [chunk] = files.chunk
     const [hash] = fields.hash
-    const [filename] = fields.filename
-    const chunkDir = path.resolve(UPLOAD_DIR, CHUNK_DIR_PREFIX + filename)
+    const [fileHash] = fields.fileHash
+    // const [filename] = fields.filename
+    const chunkDir = path.resolve(UPLOAD_DIR, CHUNK_DIR_PREFIX + fileHash)
 
     // 切片目录不存在即创建目录
     if (!fse.existsSync(chunkDir)) {
@@ -91,14 +94,15 @@ const resolvePath = async (req) => {
 /**
  * 合并切片
  */
-const mergeChunkData = async (filePath, filename, size) => {
-  const chunkDir = path.resolve(UPLOAD_DIR, `${CHUNK_DIR_PREFIX + filename}`)
+const mergeChunkData = async (filePath, filename, fileHash ,size) => {
+  const chunkDir = path.resolve(UPLOAD_DIR, `${CHUNK_DIR_PREFIX + fileHash}`)
   const chunkPaths = fse.readdirSync(chunkDir)
   // 排序
-  chunkPaths.sort((a, b) => a.split('_')[1] - b.split('_')[1])
+  chunkPaths.sort((a, b) => a.split('_____')[1] - b.split('_____')[1])
+  const mergeFileName = fileHash + `[${filename}]` + extractExt(filename)
   let promiseArr = chunkPaths.map((chunkPath, index) => {
     let _fp = path.resolve(chunkDir, chunkPath)
-    return pipeStream(_fp, fse.createWriteStream(path.resolve(UPLOAD_DIR, filename), {
+    return pipeStream(_fp, fse.createWriteStream(path.resolve(UPLOAD_DIR, mergeFileName), {
       start: index * size,
       end: (index + 1) * size
     }))
@@ -128,14 +132,39 @@ const pipeStream = async (path, writeStream) => {
  */
 app.post('/merge', async (req, res) => {
   let data = await resolvePath(req)
-  const { filename, size } = data
-  const filePath = path.resolve(UPLOAD_DIR, `${CHUNK_DIR_PREFIX + filename}`)
+  const { filename, size, fileHash } = data
+  const filePath = path.resolve(UPLOAD_DIR, `${CHUNK_DIR_PREFIX + fileHash}`)
   // 合并切片
-  await mergeChunkData(filePath, filename, size)
+  await mergeChunkData(filePath, filename, fileHash, size)
   res.json({
     code: 0,
     message: '操作成功'
   })
+})
+
+app.post('/verify', async (req, res) => {
+  let data = await resolvePath(req)
+  const { filename, fileHash } = data
+  const ext = extractExt(filename)
+  const filePath = path.resolve(UPLOAD_DIR, `${fileHash}[${filename}]${ext}`)
+  console.log(filePath)
+  if (fse.existsSync(filePath)) {
+    res.json({
+      code: 0,
+      message: 'ok',
+      data: {
+        shouldUpload: false
+      }
+    })
+  } else {
+    res.json({
+      code: 0,
+      message: 'ok',
+      data: {
+        shouldUpload: true
+      }
+    })
+  }
 })
 
 app.listen(PROT, () => {

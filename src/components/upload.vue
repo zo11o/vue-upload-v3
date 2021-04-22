@@ -1,9 +1,27 @@
 <template>
-  <div>这里是上传组件</div>
   <div>
-    <input type="file" @change="handleFileChange" />点我上传
+    <input type="file" @change="handleFileChange" />
     <el-button @click="handleUpload">点击上传</el-button>
-    <!-- <el-button @click="handleMerge">点击合并</el-button> -->
+    <el-button @click="handlePause">停止上传</el-button>
+    <div class="progress-container">
+      总进度：
+      <el-progress
+        :text-inside="true"
+        :stroke-width="26"
+        :percentage="uploadPercentage"
+        :color="customColorMethod"></el-progress>
+      <template v-for="(item) in chunkData" :key="item.hash">
+        <div>
+          {{ item.hash }}：
+          <el-progress
+            :text-inside="true"
+            :stroke-width="16"
+            :percentage="item.percentage"
+            :color="customColorMethod"
+            ></el-progress>
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -11,6 +29,7 @@
 const CHUNK_SIZE = 1 * 1024 * 1024;
 const SERVER_UPLOAD_URL = "http://localhost:3000/upload";
 const SERVER_MERGE_URL = "http://localhost:3000/merge";
+const SERVER_VERIFY_URL = "http://localhost:3000/verify";
 
 export default {
   data() {
@@ -18,13 +37,42 @@ export default {
       container: {
         file: null,
       },
-      chunkData: []
+      chunkData: [],
+      requestList: [], // 正在进行上传的
+      customColorMethod(percentage) {
+        if (percentage < 30) {
+          return '#909399';
+        } else if (percentage < 70) {
+          return '#e6a23c';
+        } else {
+          return '#67c23a';
+        }
+      },
     };
   },
+  computed: {
+    /**
+     * 计算总进度：
+     * 算法：chunkData 的 item.percentage * size 求和，而 item.percentage 是通过 xhr.upload.onpergress 计算进度 ( e.loaded / e.totol )
+     */
+    uploadPercentage() {
+      if (!this.container.file || !this.chunkData.length) return 0;
+      const loaded = this.chunkData.map(item => item.chunk.size * item.percentage).reduce((acc, cur) => acc + cur)
+      return parseInt((loaded / this.container.file.size).toFixed(2))
+    }
+  },
   methods: {
-    request({ url, method = "post", data, headers = {} }) {
+    request({
+      url,
+      method = "post",
+      data,
+      headers = {},
+      onProgress = e => e,
+      requestList
+    }) {
       return new Promise((resolve, rej) => {
         let xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = onProgress
         xhr.open(method, url, true)
         Object.keys(headers).forEach((key) => {
           xhr.setRequestHeader(key, headers[key]);
@@ -39,13 +87,17 @@ export default {
         //   }
         // }
         xhr.onload = (e) => {
-          resolve({
-            data: JSON.parse(e.target.response),
-          });
+          if(requestList && requestList.length) {
+            const xhrIndex = requestList.findIndex(item => item === xhr)
+            requestList.splice(xhrIndex, 1)
+          }
+          resolve(JSON.parse(e.target.response))
         };
         xhr.onerror = (e) => {
           rej(e);
         }
+
+        requestList && requestList.push(xhr)
       })
     },
     handleFileChange(e) {
@@ -69,7 +121,7 @@ export default {
       let cur = 0
       while(cur < totalSize) {
         res.push({file: file.slice(cur, cur + size)})
-        cur+=size
+        cur += size
       }
       return res
     },
@@ -80,12 +132,24 @@ export default {
       if (!this.container.file) return
       // 创建切片 Blob 列表
       const fileChunkList = this.createFileChunkList(this.container.file)
+
+      // spark-md5 计算当前文件 hash 值
+      this.container.hash = await this.calculateHash(fileChunkList);
+      let { shouldUpload } = await this.verifyUpload(this.container.file.name, this.container.hash)
+      if (!shouldUpload) {
+        this.$message.success('上传成功')
+        // TODO：进度条优化
+        return
+      }
+
       this.chunkData = fileChunkList.map(({ file }, i) => ({
-        hash: this.container.file.name + '_' + i,
-        chunk: file
+        fileHash: this.container.hash,
+        hash: this.container.hash + '_____' + i,
+        chunk: file,
+        index: i,
+        percentage: 0
       }))
       // 上传切片
-      console.log(333)
       await this.uploadChunks()
     },
     /**
@@ -94,31 +158,32 @@ export default {
     async uploadChunks() {
       if (!this.container.file) return
       const requestList = this.chunkData
-        .map(({ chunk, hash }) => {
+        .map(({ chunk, hash, index, fileHash }) => {
           const formData = new FormData();
           formData.append('chunk', chunk)
           formData.append('hash', hash)
+          formData.append('fileHash', fileHash)
           formData.append('filename', this.container.file.name)
-          console.log(formData)
-          return { formData }
+          return { formData, index }
         })
-        .map(async ({ formData }) =>
+        .map(async ({ formData, index }) =>
           this.request({
             url: SERVER_UPLOAD_URL,
-            data: formData
+            data: formData,
+            onProgress: this.createProgressHandler(this.chunkData[index]),
+            requestList: this.requestList
           })
         )
 
       // 并发切片
-      // let p = await Promise.all(requestList)
-      let p = await Promise.all(requestList)
-      console.log(p)
-      let r = await this.postMerge()
-      console.log(r)
-
-      // if (p.code === 0) {
-
-      // }
+      await Promise.all(requestList)
+      // 发送合并请求
+      let result = await this.postMerge()
+      if (result.code === 0) {
+        this.$message.success(result.message)
+      } else {
+        this.$message.error(result.message)
+      }
     },
 
     async postMerge() {
@@ -127,26 +192,75 @@ export default {
         return
       }
       let {name} = this.container.file
-      await this.request({
+      return this.request({
         url: SERVER_MERGE_URL,
         headers: {
           'Content-Type': 'application/json',
         },
         data: JSON.stringify({
+          fileHash: this.container.hash,
           filename: name,
           size: CHUNK_SIZE
         })
       })
     },
 
-    // handleMerge() {
+    /**
+     * 为每个上传切片创建一个进度事件监听
+     */
+    createProgressHandler(item) {
+      return e => {
+        console.log(e.loaded, e.total)
+        item.percentage = parseInt(String( (e.loaded / e.total) * 100 ))
+      }
+    },
 
+    /**
+     * 计算文件hash
+     * @step 这里了解到了 Worker 只能访问网络文件,不能访问本地文件， 所以 hash.js 需要放在 pulic 中，因为 pulic 目录在开发环境会随着 deveServer 开启一个本地服务
+     */
+    calculateHash(fileChunkList) {
+      return new Promise((resolve, reject) => {
+        console.log(resolve, reject)
+        this.container.worker = new Worker("hash.js")
+        this.container.worker.postMessage({ fileChunkList })
+        this.container.worker.onmessage = e => {
+          const { percentage, hash } = e.data
+          this.hashPercentage = percentage;
+          if (hash) {
+             resolve(hash);
+          }
+        }
+      })
+    },
 
+    /**
+     * 发起验证文件是否已经传过
+     */
+    async verifyUpload(filename, fileHash) {
+      const { data } = await this.request({
+        url: SERVER_VERIFY_URL,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        data: JSON.stringify({
+          filename,
+          fileHash
+        })
+      })
+      return data
+    },
 
-    // }
+    handlePause() {
+      this.requestList.forEach(xhr => xhr ? xhr.abort() : '')
+      this.requestList = []
+    }
   },
 };
 </script>
 
 <style scoped>
+.progress-container {
+  width: 400px;
+}
 </style>
