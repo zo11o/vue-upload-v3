@@ -1,24 +1,30 @@
 <template>
   <div>
     <input type="file" @change="handleFileChange" />
-    <el-button @click="handleUpload">点击上传</el-button>
-    <el-button @click="handlePause">停止上传</el-button>
+    <el-button v-if="isUploading" @click="handlePause">停止上传</el-button>
+    <el-button v-else @click="handleUpload">点击上传</el-button>
     <div class="progress-container">
-      总进度：
-      <el-progress
-        :text-inside="true"
-        :stroke-width="26"
-        :percentage="uploadPercentage"
-        :color="customColorMethod"></el-progress>
-      <template v-for="(item) in chunkData" :key="item.hash">
-        <div>
-          {{ item.hash }}：
+      <div class="progress-container__item">
+        <div class="progress-container__item--left">总进度:</div>
+        <div class="progress-container__item--right">
           <el-progress
+          :text-inside="true"
+          :stroke-width="26"
+          :percentage="fakeUploadPercentage"
+          :color="customColorMethod"></el-progress>
+        </div>
+      </div>
+      <template v-for="(item) in chunkData" :key="item.hash">
+        <div class="progress-container__item">
+          <div class="progress-container__item--left">{{ item.hash }}：</div>
+          <div class="progress-container__item--right">
+            <el-progress
             :text-inside="true"
             :stroke-width="16"
             :percentage="item.percentage"
             :color="customColorMethod"
             ></el-progress>
+          </div>
         </div>
       </template>
     </div>
@@ -39,6 +45,8 @@ export default {
       },
       chunkData: [],
       requestList: [], // 正在进行上传的
+      fakeUploadPercentage: 0,
+      isUploading: false,
       customColorMethod(percentage) {
         if (percentage < 30) {
           return '#909399';
@@ -59,6 +67,11 @@ export default {
       if (!this.container.file || !this.chunkData.length) return 0;
       const loaded = this.chunkData.map(item => item.chunk.size * item.percentage).reduce((acc, cur) => acc + cur)
       return parseInt((loaded / this.container.file.size).toFixed(2))
+    }
+  },
+  watch: {
+    uploadPercentage(now) {
+      this.fakeUploadPercentage = now
     }
   },
   methods: {
@@ -130,14 +143,16 @@ export default {
      */
     async handleUpload() {
       if (!this.container.file) return
+      this.isUploading = true
       // 创建切片 Blob 列表
       const fileChunkList = this.createFileChunkList(this.container.file)
-
       // spark-md5 计算当前文件 hash 值
       this.container.hash = await this.calculateHash(fileChunkList);
-      let { shouldUpload } = await this.verifyUpload(this.container.file.name, this.container.hash)
+      let { shouldUpload, uploadedList } = await this.verifyUpload(this.container.file.name, this.container.hash)
       if (!shouldUpload) {
+        this.fakeUploadPercentage = 100
         this.$message.success('上传成功')
+        this.isUploading = false
         // TODO：进度条优化
         return
       }
@@ -147,17 +162,18 @@ export default {
         hash: this.container.hash + '_____' + i,
         chunk: file,
         index: i,
-        percentage: 0
+        percentage: uploadedList.includes(this.container.hash + '_____' + i) ? 100 : 0
       }))
       // 上传切片
-      await this.uploadChunks()
+      await this.uploadChunks(uploadedList)
     },
     /**
      * 上传切片
      */
-    async uploadChunks() {
+    async uploadChunks(uploadedList = []) {
       if (!this.container.file) return
       const requestList = this.chunkData
+        .filter(({ hash }) => !uploadedList.includes(hash))
         .map(({ chunk, hash, index, fileHash }) => {
           const formData = new FormData();
           formData.append('chunk', chunk)
@@ -178,11 +194,15 @@ export default {
       // 并发切片
       await Promise.all(requestList)
       // 发送合并请求
-      let result = await this.postMerge()
-      if (result.code === 0) {
-        this.$message.success(result.message)
-      } else {
-        this.$message.error(result.message)
+      if (uploadedList.length + requestList.length === this.chunkData.length) {
+        let result = await this.postMerge()
+        if (result.code === 0) {
+          this.$message.success(result.message)
+          this.isUploading = false
+        } else {
+          this.$message.error(result.message)
+          this.isUploading = false
+        }
       }
     },
 
@@ -254,13 +274,23 @@ export default {
     handlePause() {
       this.requestList.forEach(xhr => xhr ? xhr.abort() : '')
       this.requestList = []
+      this.isUploading = false
     }
   },
 };
 </script>
 
 <style scoped>
-.progress-container {
+/* .progress-container {
   width: 400px;
+} */
+
+.progress-container__item {
+  display: flex;
+  margin: 5px
+}
+
+.progress-container__item--right {
+  width: 100%;
 }
 </style>

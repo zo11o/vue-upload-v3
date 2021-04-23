@@ -126,6 +126,16 @@ const pipeStream = async (path, writeStream) => {
 }
 
 /**
+ * 获取已经上传的文件目录
+ * @param {String} fileHash 文件hash
+ */
+const createUploadedList = async (fileHash) => {
+  return fse.existsSync(path.resolve(UPLOAD_DIR, `${CHUNK_DIR_PREFIX + fileHash}`))
+    ? await fse.readdir(path.resolve(UPLOAD_DIR, `${CHUNK_DIR_PREFIX + fileHash}`))
+    : []
+}
+
+/**
  * 发起合并请求
  * @step createReadStream(writStream) 文档和文件同名.导致不写 不会触发 data 事件
  * @step size 为每个切片的大小 而不是文件总大小
@@ -161,7 +171,8 @@ app.post('/verify', async (req, res) => {
       code: 0,
       message: 'ok',
       data: {
-        shouldUpload: true
+        shouldUpload: true,
+        uploadedList: await createUploadedList(fileHash)
       }
     })
   }

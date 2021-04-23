@@ -5,7 +5,8 @@
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
-    "lint": "vue-cli-service lint"
+    "lint": "vue-cli-service lint",
+    "server": "node ./server/app.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.5",
@@ -16,6 +17,7 @@
     "fs-extra": "^7.0.1",
     "morgan": "^1.10.0",
     "multiparty": "^4.2.2",
+    "spark-md5": "^3.0.1",
     "vue": "^3.0.0"
   },
   "devDependencies": {
